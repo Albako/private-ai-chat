@@ -12,6 +12,7 @@ services:
       - LLAMA_ARG_HOST=0.0.0.0
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
     command: --models-dir /models -c 8192 -ngl 99 --port 8080 -np 1
     deploy:
       resources:
@@ -21,15 +22,27 @@ services:
               count: 1
               capabilities: [gpu]
 
+  qdrant:
+    image: qdrant/qdrant
+    container_name: ai-knowledge-db
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage:z
+
   backend:
     build: ./backend
     container_name: ai-backend
     volumes:
       - ./backend/app:/app/app
       - ./models:/app/models
+      - ./hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     depends_on:
       - llama-server
+      - qdrant
     environment:
       - OPENAI_BASE_URL=http://llama-server:8080/v1
+      - QDRANT_URL=http://qdrant:6333

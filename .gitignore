@@ -19,3 +19,4 @@ Pipfile
 __pychache__/
 .venv/
 venv/
+*.zim
