@@ -7,6 +7,8 @@ from openai import OpenAI
 from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, select
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
 # database for the llm. it is created with sqlite
 # database will create itself in backend/app/
@@ -31,6 +33,20 @@ class MessageDB(Base):
 
 Base.metadata.create_all(bind=engine) # creating table in the database
 
+# RAG configuration
+QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+
+try:
+    qdrant_client = QdrantClient(url=QDRANT_URL)
+except Exception as e:
+    print(f"Warning: Could not connect to Qdrant: {e}")
+    qdrant_client = None
+
+# Embedded model
+print("Loading embedding model...")
+embed_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+COLLECTION_NAME = "knowledge"
+
 # dependency for downloading DB session
 def get_db():
     db = SessionLocal()
@@ -53,6 +69,29 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     temperature: float = 0.7
     model_name: str
+
+# logic of finding knowledge
+def search_knowledge(query_text: str, limit: int = 3) -> str:
+    if not qdrant_client:
+        return ""
+    try:
+        cols = qdrant_client.get_collections()
+        if not any(c.name == COLLECTION_NAME for c in cols.collections):
+            return ""
+        query_vector = embed_model.encode(query_text).tolist()
+        search_result = qdrant_client.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_vector,
+            limit=limit
+        )
+        found_texts = [hit.payload['text'] for hit in search_result if 'text' in hit.payload]
+        if not found_texts:
+            return ""
+
+        return "\n---\n".join(found_texts)
+    except Exception as e:
+        print(f"Error searching knowledge: {e}")
+        return ""
 
 @app.get("/")
 def read_root():
@@ -92,8 +131,14 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         result = db.execute(history_query)
         stored_messages = result.scalars().all()
 
+        # 2. RAG
+        context_knowledge = search_knowledge(request.message)
+        system_instruction = "You're a private and uncensored AI assistant."
+        if context_knowledge:
+            system_instruction += f"\n\nUSE THIS KNOWLEDGE TO GIVE AN ANSWEAR:\n{context_knowledge}"
+
         # list of messages for the llm
-        messages_for_llm = [{"role": "system", "content": "You are a private uncensored AI assistant. Remember past conversations."}]
+        messages_for_llm = [{"role": "system", "content": system_instruction}]
 
         for msg in stored_messages:
             messages_for_llm.append({"role": msg.role, "content": msg.content})
@@ -107,7 +152,7 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         db.commit()
 
         # 3. Send the prompt to the llm
-        print(f"Sending {len(messages_for_llm)} messages to LLM...")
+        print(f"Sending to LLM (Model: {request.model_name})...")
         response = client.chat.completions.create(
             model=request.model_name,
             messages=messages_for_llm,
