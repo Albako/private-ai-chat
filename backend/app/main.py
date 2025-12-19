@@ -1,3 +1,4 @@
+import glob
 import os
 import datetime
 from fastapi import FastAPI, HTTPException, Depends
@@ -10,6 +11,7 @@ from sqlalchemy.orm import sessionmaker, Session, declarative_base
 # database for the llm. it is created with sqlite
 # database will create itself in backend/app/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = "/app/models"
 DB_PATH = os.path.join(BASE_DIR, "chat_history.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
@@ -50,10 +52,36 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     temperature: float = 0.7
+    model_name: str
 
 @app.get("/")
 def read_root():
     return {"status": "online", "service": "Assistant - Backend"}
+
+@app.get("/models")
+def list_models():
+    models_list = []
+
+    if not os.path.exists(MODELS_DIR):
+        return {"error": f"Directory {MODELS_DIR} not found. Check docker volumes."}
+
+    # we are looking for .gguf files
+    gguf_files = glob.glob(os.path.join(MODELS_DIR, "*.gguf"))
+
+    for file_path in gguf_files:
+        try:
+            filename = os.path.basename(file_path)
+            size_bytes = os.path.getsize(file_path)
+            size_gb = round(size_bytes / (1024 ** 3), 2)
+            models_list.append({
+                "name": filename,
+                "size_gb": f"{size_gb} GB"
+                "path": file_path
+            })
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+
+    return {"models": models_list, "count": len(models_list)}
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
@@ -81,10 +109,10 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         # 3. Send the prompt to the llm
         print(f"Sending {len(messages_for_llm)} messages to LLM...")
         response = client.chat.completions.create(
-            model="deepseek-r1",
+            model=request.model_name,
             messages=messages_for_llm,
             temperature=request.temperature,
-            max_tokens_2048,
+            max_tokens=2048,
         )
 
         ai_message_content = response.choices[0].message.content
