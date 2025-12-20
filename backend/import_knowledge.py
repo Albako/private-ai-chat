@@ -9,7 +9,7 @@ import uuid
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 COLLECTION_NAME = "knowledge"
-ZIM_FILE_PATH = "knowledge_wikipedia.zim"
+ZIM_FILE_PATH = "knowledge/knowledge_wikipedia.zim"
 
 def clean_html(html_content):
     soup = BeautifulSoup(html_content, "lxml")
