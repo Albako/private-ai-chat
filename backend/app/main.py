@@ -114,7 +114,7 @@ def list_models():
             size_gb = round(size_bytes / (1024 ** 3), 2)
             models_list.append({
                 "name": filename,
-                "size_gb": f"{size_gb} GB"
+                "size_gb": f"{size_gb} GB",
                 "path": file_path
             })
         except Exception as e:
