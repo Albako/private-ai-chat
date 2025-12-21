@@ -19,7 +19,7 @@ docker compose up --build -d
 ```
 If you're starting this app once again, then you can use only this
 ```
-docker compose up
+docker compose up -d
 ```
 
 #### localhost
