@@ -20,3 +20,4 @@ __pychache__/
 .venv/
 venv/
 *.zim
+qdrant_storage/
