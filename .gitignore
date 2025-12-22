@@ -21,3 +21,5 @@ __pychache__/
 venv/
 *.zim
 qdrant_storage/
+GEMMA-use-policy.txt
+
