@@ -1,7 +1,7 @@
 import glob
 import os
 import datetime
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from openai import OpenAI
 from typing import List, Optional
@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, s
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
+from app.import_knowledge import import_zim_data
 
 # database for the llm. it is created with sqlite
 # database will create itself in backend/app/
@@ -68,7 +69,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     temperature: float = 0.7
-    model_name: str
+    name_model: str
 
 # logic of finding knowledge
 def search_knowledge(query_text: str, limit: int = 3) -> str:
@@ -152,9 +153,9 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
         db.commit()
 
         # 3. Send the prompt to the llm
-        print(f"Sending to LLM (Model: {request.model_name})...")
+        print(f"Sending to LLM (Model: {request.name_model})...")
         response = client.chat.completions.create(
-            model=request.model_name,
+            model=request.name_model,
             messages=messages_for_llm,
             temperature=request.temperature,
             max_tokens=2048,
@@ -172,5 +173,20 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
             "history_used": len(stored_messages)
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ImportResponse(BaseModel):
+    status: str
+    message: str
+
+@app.post("/import-knowledge", response_model=ImportResponse)
+async def trigger_knowledge_import(background_tasks: BackgroundTasks):
+    try:
+        background_tasks.add_task(import_zim_data)
+        return {
+            "status": "started",
+            "message": "Rozpoczęto proces indeksowania wiedzy z plików .zim. To może potrwać kilka minut."
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -22,4 +22,4 @@ venv/
 *.zim
 qdrant_storage/
 GEMMA-use-policy.txt
-
+hf_cache/

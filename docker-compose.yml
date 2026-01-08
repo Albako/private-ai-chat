@@ -35,9 +35,10 @@ services:
     build: ./backend
     container_name: ai-backend
     volumes:
-      - ./backend/app:/app/app
-      - ./models:/app/models
-      - ./hf_cache:/root/.cache/huggingface
+      - ./backend/app:/app/app:z
+      - ./models:/app/models:z
+      - ./hf_cache:/root/.cache/huggingface:z
+      - ./backend/knowledge:/app/knowledge:z
     ports:
       - "8000:8000"
     depends_on:
